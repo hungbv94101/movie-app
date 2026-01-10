@@ -1,0 +1,12 @@
+export { MovieCard } from './MovieCard';
+export { SearchBar } from './SearchBar';
+export { LoadingSpinner } from './LoadingSpinner';
+export { ErrorMessage } from './ErrorMessage';
+export { Pagination } from './Pagination';
+export { SafeImage } from './SafeImage';
+export { AuthModal } from './AuthModal';
+export { ForgotPasswordModal } from './ForgotPasswordModal';
+export { ChangePasswordModal } from './ChangePasswordModal';
+export { UpdateProfileModal } from './UpdateProfileModal';
+export { ProtectedRoute } from './ProtectedRoute';
+export { RequireAuth } from './RequireAuth';

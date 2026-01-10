@@ -1,0 +1,444 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Container, 
+  Title, 
+  Group, 
+  SimpleGrid, 
+  Text, 
+  Space,
+  Center,
+  Button,
+  Select,
+  TextInput
+} from '@mantine/core';
+import { IconLogin, IconX } from '@tabler/icons-react';
+import { 
+  MovieCard, 
+  SearchBar, 
+  LoadingSpinner, 
+  ErrorMessage, 
+  Pagination,
+  AuthModal,
+  ForgotPasswordModal,
+  ChangePasswordModal
+} from '../components';
+import { useMovieGraphQLStore, useAuthStore } from '../store';
+import type { Movie } from '../types';
+
+export function HomePageGraphQL() {
+  const navigate = useNavigate();
+  const [authModalOpened, setAuthModalOpened] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [forgotPasswordOpened, setForgotPasswordOpened] = useState(false);
+  // Always show filters - removed showFilters state
+  
+  const { user, logout, needsPasswordChange } = useAuthStore();
+  const {
+    movies,
+    searchResults,
+    isLoading,
+    error,
+    searchQuery,
+    hasSearched,
+    currentPage,
+    totalPages,
+    filters,
+    fetchMovies,
+    searchMovies,
+    clearSearch,
+    loadFavoritesFromStorage,
+    setFilters,
+    resetFilters,
+    toggleFavorite,
+  } = useMovieGraphQLStore();
+
+  // Load favorites and initial data on component mount
+  useEffect(() => {
+    loadFavoritesFromStorage();
+    if (!hasSearched && movies.length === 0) {
+      fetchMovies(1);
+    }
+  }, [loadFavoritesFromStorage, fetchMovies, hasSearched, movies.length]);
+
+  // Redirect to /change-password page if needsPasswordChange is true after login
+  useEffect(() => {
+    if (needsPasswordChange) {
+      navigate('/change-password');
+    }
+  }, [needsPasswordChange, navigate]);
+
+  const displayMovies = hasSearched ? searchResults : movies;
+  
+  const handleSearch = (query: string) => {
+    // Always call searchMovies - it handles empty queries properly
+    searchMovies(query, 1);
+  };
+
+  const handleClearSearch = () => {
+    // Call searchMovies with empty query to trigger "show all movies" logic
+    searchMovies('', 1);
+    resetFilters();
+  };
+
+  const handlePageChange = (page: number) => {
+    if (hasSearched && searchQuery) {
+      searchMovies(searchQuery, page);
+    } else {
+      fetchMovies(page);
+    }
+  };
+
+  const handleMovieClick = (movie: Movie) => {
+    // Check if user is logged in for detail view
+    if (!user) {
+      setAuthMode('login');
+      setAuthModalOpened(true);
+      return;
+    }
+
+    // If it's a movie from database (has id), navigate to detail page
+    if (movie.id) {
+      navigate(`/movies/${movie.id}`);
+    } 
+    // If it's a search result (has imdbID but no id), navigate to external detail
+    else if (movie.imdbID) {
+      navigate(`/movies/detail/${movie.imdbID}`);
+    }
+  };
+
+  const handleFavoriteClick = (movieId: string) => {
+    if (!user) {
+      setAuthMode('login');
+      setAuthModalOpened(true);
+      return;
+    }
+
+    const movieIdNum = parseInt(movieId, 10);
+    if (movieIdNum) {
+      // Toggle favorite status
+      toggleFavorite(movieIdNum);
+    }
+  };
+
+  const handleRetry = () => {
+    if (hasSearched && searchQuery) {
+      searchMovies(searchQuery, currentPage);
+    } else {
+      fetchMovies(currentPage);
+    }
+  };
+
+  const handleFilterChange = (filterType: keyof typeof filters, value: string | null) => {
+    setFilters({ [filterType]: value || undefined });
+    
+    // Re-run search or fetch with new filters
+    if (hasSearched && searchQuery) {
+      searchMovies(searchQuery, 1);
+    } else {
+      fetchMovies(1);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+      {/* Header */}
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px)',
+        borderBottom: '1px solid rgba(0, 0, 0, 0.1)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100
+      }}>
+        <Container size="xl" py="md">
+          <Group justify="space-between" align="center">
+            <Group align="center">
+              <Title order={1} size="h2" style={{ color: '#2c3e50' }}>
+                🎬 Movie
+              </Title>
+            </Group>
+            
+            <Group>
+              {user ? (
+                <Group>
+                  <Text size="sm" fw={500}>
+                    Welcome, {user.name}!
+                  </Text>
+                  <Button variant="light" color="red" onClick={logout}>
+                    Logout
+                  </Button>
+                </Group>
+              ) : (
+                <Button 
+                  leftSection={<IconLogin size={16} />}
+                  onClick={() => {
+                    setAuthMode('login');
+                    setAuthModalOpened(true);
+                  }}
+                >
+                  Login
+                </Button>
+              )}
+            </Group>
+          </Group>
+        </Container>
+      </div>
+
+      {/* Main Content */}
+      <Container size="xl" py="lg">
+        {/* Search and Filters Section */}
+        <div style={{ marginBottom: '2rem' }}>          
+          {/* Combined Search & Filters Section */}
+          <Container size="xl">
+            <Group justify="space-between" align="end" mb="md">
+              {/* Filters on the left */}
+              <Group gap="md">
+                <Select
+                  placeholder="Filter by Genre"
+                  value={filters.genre || ''}
+                  onChange={(value) => handleFilterChange('genre', value)}
+                  data={[
+                    { value: '', label: 'All Genres' },
+                    { value: 'Action', label: 'Action' },
+                    { value: 'Comedy', label: 'Comedy' },
+                    { value: 'Drama', label: 'Drama' },
+                    { value: 'Horror', label: 'Horror' },
+                    { value: 'Romance', label: 'Romance' },
+                    { value: 'Sci-Fi', label: 'Sci-Fi' },
+                    { value: 'Thriller', label: 'Thriller' },
+                  ]}
+                  clearable
+                  w={150}
+                />
+                
+                <TextInput
+                  placeholder="Year (e.g., 2023)"
+                  value={filters.year || ''}
+                  onChange={(e) => handleFilterChange('year', e.target.value)}
+                  w={120}
+                />
+                
+                <Select
+                  placeholder="Rating"
+                  value={filters.rating || ''}
+                  onChange={(value) => handleFilterChange('rating', value)}
+                  data={[
+                    { value: '', label: 'All Ratings' },
+                    { value: 'G', label: 'G' },
+                    { value: 'PG', label: 'PG' },
+                    { value: 'PG-13', label: 'PG-13' },
+                    { value: 'R', label: 'R' },
+                    { value: 'NC-17', label: 'NC-17' },
+                  ]}
+                  clearable
+                  w={120}
+                />
+                
+                <Select
+                  placeholder="Sort By"
+                  value={filters.sortBy}
+                  onChange={(value) => handleFilterChange('sortBy', value || 'created_at')}
+                  data={[
+                    { value: 'relevance', label: 'Relevance' },
+                    { value: 'title', label: 'Title' },
+                    { value: 'year', label: 'Year' },
+                    { value: 'rating', label: 'Rating' },
+                    { value: 'favorites', label: 'Popularity' },
+                    { value: 'created_at', label: 'Date Added' },
+                  ]}
+                  w={120}
+                />
+                
+                <Select
+                  placeholder="Order"
+                  value={filters.sortOrder}
+                  onChange={(value) => handleFilterChange('sortOrder', value || 'desc')}
+                  data={[
+                    { value: 'asc', label: 'Ascending' },
+                    { value: 'desc', label: 'Descending' },
+                  ]}
+                  w={120}
+                />
+              </Group>
+
+              {/* Search on the right */}
+              <Group gap="sm">
+                <SearchBar
+                  onSearch={handleSearch}
+                  onClear={handleClearSearch}
+                  value={searchQuery}
+                  placeholder="Search movies: titles, actors, directors, genres..."
+                />
+                {(filters.genre || filters.year || filters.rating) && (
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    leftSection={<IconX size={16} />}
+                    onClick={resetFilters}
+                  >
+                    Clear Filters
+                  </Button>
+                )}
+              </Group>
+            </Group>
+          </Container>
+        </div>
+
+        {/* Results Info */}
+        {hasSearched && (
+          <Group justify="space-between" mb="lg">
+            <Text size="lg" fw={500}>
+              Search Results for: "{searchQuery}" {filters.genre && `| Genre: ${filters.genre}`}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {searchResults.length} movies found
+            </Text>
+          </Group>
+        )}
+
+        {!hasSearched && (
+          <Group justify="space-between" mb="lg">
+            <Title order={2} size="h3">
+              Popular Movies {filters.genre && `(${filters.genre})`}
+            </Title>
+            <Text size="sm" c="dimmed">
+              {movies.length} movies
+            </Text>
+          </Group>
+        )}
+
+        {/* Loading State */}
+        {isLoading && (
+          <LoadingSpinner 
+            message={hasSearched ? 'Searching movies...' : 'Loading movies...'}
+          />
+        )}
+
+        {/* Error State */}
+        {error && !isLoading && (
+          <ErrorMessage 
+            message={error}
+            onRetry={handleRetry}
+          />
+        )}
+
+        {/* Movies Grid */}
+        {!isLoading && !error && displayMovies.length > 0 && (
+          <div>
+          <SimpleGrid
+            cols={{ base: 1, sm: 2, md: 3, lg: 4 }}
+            spacing="lg"
+            verticalSpacing="lg"
+          >
+              {displayMovies.map((movie) => (
+                <MovieCard
+                  key={movie.id || movie.imdbID || `movie-${Math.random()}`}
+                  movie={movie}
+                  onMovieClick={handleMovieClick}
+                  onFavoriteClick={handleFavoriteClick}
+                  showAuthModal={() => {
+                    setAuthMode('login');
+                    setAuthModalOpened(true);
+                  }}
+                />
+              ))}
+            </SimpleGrid>
+
+            {/* Pagination */}
+            <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* No Results */}
+        {!isLoading && !error && displayMovies.length === 0 && hasSearched && (
+          <Center style={{ minHeight: 200 }}>
+            <div style={{ textAlign: 'center' }}>
+              <Text size="lg" mb="md">
+                No movies found for "{searchQuery}"
+              </Text>
+              <Text size="sm" c="dimmed">
+                Try searching with different keywords or adjust your filters
+              </Text>
+            </div>
+          </Center>
+        )}
+
+        {/* No Movies at all */}
+        {!isLoading && !error && movies.length === 0 && !hasSearched && (
+          <Center style={{ minHeight: 200 }}>
+            <div style={{ textAlign: 'center' }}>
+              <Text size="lg" mb="md">
+                No movies available
+              </Text>
+              <Text size="sm" c="dimmed">
+                Search for movies to get started
+              </Text>
+            </div>
+          </Center>
+        )}
+      </Container>
+
+      {/* Footer */}
+      <div style={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: 'white',
+        padding: '3rem 0',
+        marginTop: '3rem'
+      }}>
+        <Container size="xl">
+          <Group justify="space-between" align="center">
+            <div>
+              <Title order={3} size="h4" mb="sm" style={{ color: 'white' }}>
+                🎬 Movie
+              </Title>
+              <Text size="sm" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                Discover amazing movies with advanced search and filtering
+              </Text>
+            </div>
+            
+            <div>
+              <Text size="xs" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                Built with React, TypeScript, Mantine UI & Laravel
+              </Text>
+            </div>
+          </Group>
+        </Container>
+      </div>
+
+      <Space h="xl" />
+
+      {/* Auth Modal */}
+      <AuthModal
+        opened={authModalOpened}
+        onClose={() => setAuthModalOpened(false)}
+        mode={authMode}
+        onModeChange={(newMode) => setAuthMode(newMode)}
+        onShowForgotPassword={() => setForgotPasswordOpened(true)}
+      />
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal 
+        opened={forgotPasswordOpened}
+        onClose={() => setForgotPasswordOpened(false)}
+      />
+
+      {/* Change Password Modal - Shows when user logged in with temporary password */}
+      <ChangePasswordModal 
+        opened={needsPasswordChange}
+        onClose={() => {}}
+        forced={true}
+        onSuccess={() => {
+          // After successful password change, user can continue using the app
+          console.log('Password changed successfully, user can now use the app');
+        }}
+      />
+    </div>
+  );
+}
