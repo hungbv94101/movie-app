@@ -62,7 +62,7 @@ export function MovieDetailPage() {
       </Container>
     );
   }
-
+  
   if (!currentMovie) {
     return (
       <Container size="xl" py="xl">
@@ -112,6 +112,17 @@ export function MovieDetailPage() {
             {isFavorite ? <IconHeartFilled size={20} /> : <IconHeart size={20} />}
           </ActionIcon>
         </Tooltip>
+        {currentMovie.imdb_rating !== 'N/A' && (
+          <Group gap="xs" ml="md">
+            <IconStar size={20} color="gold" fill="gold" />
+            <Text size="lg" fw={500}>
+              {currentMovie.imdb_rating}/10
+            </Text>
+            <Text size="sm" c="dimmed">
+              ({currentMovie.imdb_votes} votes)
+            </Text>
+          </Group>
+        )}
       </Group>
 
       <Grid>
@@ -135,15 +146,14 @@ export function MovieDetailPage() {
               <Title order={1} size="h2" mb="xs">
                 {currentMovie.title}
               </Title>
-              
-              {currentMovie.imdbRating !== 'N/A' && (
+              {currentMovie.imdb_rating !== 'N/A' && (
                 <Group gap="xs" mb="md">
                   <IconStar size={20} color="gold" fill="gold" />
                   <Text size="lg" fw={500}>
-                    {currentMovie.imdbRating}/10
+                    {currentMovie.imdb_rating}/10
                   </Text>
                   <Text size="sm" c="dimmed">
-                    ({currentMovie.imdbVotes} votes)
+                    ({currentMovie.imdb_votes} votes)
                   </Text>
                 </Group>
               )}
