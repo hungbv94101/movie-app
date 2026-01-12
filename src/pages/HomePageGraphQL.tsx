@@ -51,6 +51,7 @@ export function HomePageGraphQL() {
     clearSearch,
     setFilters,
     resetFilters,
+    toggleFavorite,
   } = useMovieGraphQLStore();
 
   // Local state for favorites (localStorage only)
