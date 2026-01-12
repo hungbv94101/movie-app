@@ -12,7 +12,7 @@ import {
   Select,
   TextInput
 } from '@mantine/core';
-import { IconLogin, IconX } from '@tabler/icons-react';
+import { IconLogin, IconX, IconArchive, IconTrash } from '@tabler/icons-react';
 import { 
   MovieCard, 
   SearchBar, 
@@ -23,7 +23,9 @@ import {
   ForgotPasswordModal,
   ChangePasswordModal
 } from '../components';
+import { ActionIcon } from '@mantine/core';
 import { useMovieGraphQLStore, useAuthStore } from '../store';
+import { localStorageUtils } from '../utils';
 import type { Movie } from '../types';
 
 export function HomePageGraphQL() {
@@ -47,19 +49,45 @@ export function HomePageGraphQL() {
     fetchMovies,
     searchMovies,
     clearSearch,
-    loadFavoritesFromStorage,
     setFilters,
     resetFilters,
-    toggleFavorite,
   } = useMovieGraphQLStore();
+
+  // Local state for favorites (localStorage only)
+  const [favoriteIds, setFavoriteIds] = useState<number[]>(localStorageUtils.getFavoriteIds());
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [favoriteSearch, setFavoriteSearch] = useState('');
+
+  // Sync with localStorage on mount
+  useEffect(() => {
+    setFavoriteIds(localStorageUtils.getFavoriteIds());
+  }, []);
+
+  // Toggle favorite for a movie
+  const handleToggleFavorite = (movieId: number) => {
+    let updated: number[];
+    if (favoriteIds.includes(movieId)) {
+      localStorageUtils.removeFromFavorites(movieId);
+      updated = favoriteIds.filter(id => id !== movieId);
+    } else {
+      localStorageUtils.addToFavorites(movieId);
+      updated = [...favoriteIds, movieId];
+    }
+    setFavoriteIds(updated);
+  };
+
+  // Reset all favorites
+  const handleResetFavorites = () => {
+    localStorageUtils.clearFavorites();
+    setFavoriteIds([]);
+  };
 
   // Load favorites and initial data on component mount
   useEffect(() => {
-    loadFavoritesFromStorage();
     if (!hasSearched && movies.length === 0) {
       fetchMovies(1);
     }
-  }, [loadFavoritesFromStorage, fetchMovies, hasSearched, movies.length]);
+  }, [fetchMovies, hasSearched, movies.length]);
 
   // Redirect to /change-password page if needsPasswordChange is true after login
   useEffect(() => {
@@ -69,6 +97,15 @@ export function HomePageGraphQL() {
   }, [needsPasswordChange, navigate]);
 
   const displayMovies = hasSearched ? searchResults : movies;
+
+  // Lấy danh sách phim đã lưu từ all movies (ưu tiên movies, nếu rỗng thì lấy searchResults)
+  const allMovies = movies.length > 0 ? movies : searchResults;
+  const favoriteMovies = allMovies.filter(m => m.id && favoriteIds.includes(m.id));
+  const filteredFavoriteMovies = favoriteSearch.trim()
+    ? favoriteMovies.filter(m =>
+        m.title?.toLowerCase().includes(favoriteSearch.trim().toLowerCase())
+      )
+    : favoriteMovies;
   
   const handleSearch = (query: string) => {
     // Always call searchMovies - it handles empty queries properly
@@ -187,7 +224,6 @@ export function HomePageGraphQL() {
 
       {/* Main Content */}
       <Container size="xl" py="lg">
-        {/* Search and Filters Section */}
         <div style={{ marginBottom: '2rem' }}>          
           {/* Combined Search & Filters Section */}
           <Container size="xl">
@@ -260,6 +296,16 @@ export function HomePageGraphQL() {
                   ]}
                   w={120}
                 />
+
+                {/* Show Saved Movies button filter */}
+                <Button
+                  variant={showFavorites ? 'filled' : 'outline'}
+                  color={showFavorites ? 'blue' : 'gray'}
+                  onClick={() => setShowFavorites(v => !v)}
+                  style={{backgroundColor: "white", color: "black" }}
+                >
+                  {showFavorites ? 'Show All Movies' : 'Show Saved Movies'}
+                </Button>
               </Group>
 
               {/* Search on the right */}
@@ -323,65 +369,103 @@ export function HomePageGraphQL() {
           />
         )}
 
-        {/* Movies Grid */}
-        {!isLoading && !error && displayMovies.length > 0 && (
+        {/* Movies Grid hoặc Favorites Grid */}
+        {!isLoading && !error && (
           <div>
-          <SimpleGrid
-            cols={{ base: 1, sm: 2, md: 3, lg: 4 }}
-            spacing="lg"
-            verticalSpacing="lg"
-          >
-              {displayMovies.map((movie) => (
-                <MovieCard
-                  key={movie.id || movie.imdbID || `movie-${Math.random()}`}
-                  movie={movie}
-                  onMovieClick={handleMovieClick}
-                  onFavoriteClick={handleFavoriteClick}
-                  showAuthModal={() => {
-                    setAuthMode('login');
-                    setAuthModalOpened(true);
-                  }}
-                />
-              ))}
+            <SimpleGrid
+              cols={{ base: 1, sm: 2, md: 3, lg: 4 }}
+              spacing="lg"
+              verticalSpacing="lg"
+            >
+              {(showFavorites ? filteredFavoriteMovies : displayMovies).map((movie) => {
+                const isFavorite = movie.id && favoriteIds.includes(movie.id);
+                return (
+                  <div key={movie.id || movie.imdbID || `movie-${Math.random()}`} style={{ position: 'relative' }}>
+                    <MovieCard
+                      movie={movie}
+                      onMovieClick={handleMovieClick}
+                      onFavoriteClick={handleFavoriteClick}
+                      showAuthModal={() => {
+                        setAuthMode('login');
+                        setAuthModalOpened(true);
+                      }}
+                    />
+                    {/* Favorite Icon: Only show if user is logged in and movie has id */}
+                    {user && movie.id && (
+                      <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 10 }}>
+                        <ActionIcon
+                          variant={isFavorite ? 'filled' : 'filled'}
+                          color={isFavorite ? 'green' : 'blue'}
+                          size="lg"
+                          onClick={() => movie.id && handleToggleFavorite(movie.id)}
+                          aria-label={isFavorite ? 'Remove from favorites' : 'Save as favorite'}
+                        >
+                          {isFavorite ? <IconTrash size={22} /> : <IconArchive size={22} />}
+                        </ActionIcon>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </SimpleGrid>
 
-            {/* Pagination */}
-            <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
-              />
-            </div>
+            {/* Pagination chỉ cho chế độ xem tất cả phim */}
+            {!showFavorites && (
+              <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange}
+                />
+              </div>
+            )}
           </div>
         )}
 
         {/* No Results */}
-        {!isLoading && !error && displayMovies.length === 0 && hasSearched && (
-          <Center style={{ minHeight: 200 }}>
-            <div style={{ textAlign: 'center' }}>
-              <Text size="lg" mb="md">
-                No movies found for "{searchQuery}"
-              </Text>
-              <Text size="sm" c="dimmed">
-                Try searching with different keywords or adjust your filters
-              </Text>
-            </div>
-          </Center>
-        )}
-
-        {/* No Movies at all */}
-        {!isLoading && !error && movies.length === 0 && !hasSearched && (
-          <Center style={{ minHeight: 200 }}>
-            <div style={{ textAlign: 'center' }}>
-              <Text size="lg" mb="md">
-                No movies available
-              </Text>
-              <Text size="sm" c="dimmed">
-                Search for movies to get started
-              </Text>
-            </div>
-          </Center>
+        {!isLoading && !error && (
+          <>
+            {showFavorites ? (
+              filteredFavoriteMovies.length === 0 && (
+                <Center style={{ minHeight: 200 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Text size="lg" mb="md">
+                      No saved movies found
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      Save a movie or try a different keyword
+                    </Text>
+                  </div>
+                </Center>
+              )
+            ) : (
+              (displayMovies.length === 0 && hasSearched) ? (
+                <Center style={{ minHeight: 200 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Text size="lg" mb="md">
+                      No movies found for "{searchQuery}"
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      Try searching with different keywords or adjust your filters
+                    </Text>
+                  </div>
+                </Center>
+              ) : (
+                (movies.length === 0 && !hasSearched) && (
+                  <Center style={{ minHeight: 200 }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <Text size="lg" mb="md">
+                        No movies available
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        Search for movies to get started
+                      </Text>
+                    </div>
+                  </Center>
+                )
+              )
+            )}
+          </>
         )}
       </Container>
 
