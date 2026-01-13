@@ -12,7 +12,7 @@ import {
   Select,
   TextInput
 } from '@mantine/core';
-import { IconLogin, IconX, IconArchive, IconTrash } from '@tabler/icons-react';
+import { IconLogin, IconX, IconArchive, IconTrash, IconUser } from '@tabler/icons-react';
 import { 
   MovieCard, 
   SearchBar, 
@@ -25,7 +25,6 @@ import {
 } from '../components';
 import { ActionIcon } from '@mantine/core';
 import { useMovieGraphQLStore, useAuthStore } from '../store';
-import { localStorageUtils } from '../utils';
 import type { Movie } from '../types';
 
 export function HomePageGraphQL() {
@@ -46,42 +45,25 @@ export function HomePageGraphQL() {
     currentPage,
     totalPages,
     filters,
+    favoriteIds,
     fetchMovies,
     searchMovies,
     clearSearch,
     setFilters,
     resetFilters,
     toggleFavorite,
+    isFavorited,
+    loadFavoritesFromStorage,
   } = useMovieGraphQLStore();
 
-  // Local state for favorites (localStorage only)
-  const [favoriteIds, setFavoriteIds] = useState<number[]>(localStorageUtils.getFavoriteIds());
+  // Local state for favorites UI
   const [showFavorites, setShowFavorites] = useState(false);
   const [favoriteSearch, setFavoriteSearch] = useState('');
 
-  // Sync with localStorage on mount
+  // Load favorites from localStorage on mount
   useEffect(() => {
-    setFavoriteIds(localStorageUtils.getFavoriteIds());
-  }, []);
-
-  // Toggle favorite for a movie
-  const handleToggleFavorite = (movieId: number) => {
-    let updated: number[];
-    if (favoriteIds.includes(movieId)) {
-      localStorageUtils.removeFromFavorites(movieId);
-      updated = favoriteIds.filter(id => id !== movieId);
-    } else {
-      localStorageUtils.addToFavorites(movieId);
-      updated = [...favoriteIds, movieId];
-    }
-    setFavoriteIds(updated);
-  };
-
-  // Reset all favorites
-  const handleResetFavorites = () => {
-    localStorageUtils.clearFavorites();
-    setFavoriteIds([]);
-  };
+    loadFavoritesFromStorage();
+  }, [loadFavoritesFromStorage]);
 
   // Load favorites and initial data on component mount
   useEffect(() => {
@@ -101,7 +83,7 @@ export function HomePageGraphQL() {
 
   // Lấy danh sách phim đã lưu từ all movies (ưu tiên movies, nếu rỗng thì lấy searchResults)
   const allMovies = movies.length > 0 ? movies : searchResults;
-  const favoriteMovies = allMovies.filter(m => m.id && favoriteIds.includes(m.id));
+  const favoriteMovies = allMovies.filter(m => m.imdbID && isFavorited(m.imdbID));
   const filteredFavoriteMovies = favoriteSearch.trim()
     ? favoriteMovies.filter(m =>
         m.title?.toLowerCase().includes(favoriteSearch.trim().toLowerCase())
@@ -145,18 +127,15 @@ export function HomePageGraphQL() {
     }
   };
 
-  const handleFavoriteClick = (movieId: string) => {
+  const handleFavoriteClick = (imdbID: string) => {
     if (!user) {
       setAuthMode('login');
       setAuthModalOpened(true);
       return;
     }
 
-    const movieIdNum = parseInt(movieId, 10);
-    if (movieIdNum) {
-      // Toggle favorite status
-      toggleFavorite(movieIdNum);
-    }
+    // Toggle favorite using imdbID
+    toggleFavorite(imdbID);
   };
 
   const handleRetry = () => {
@@ -179,7 +158,7 @@ export function HomePageGraphQL() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)' }}>
       {/* Header */}
       <div style={{
         background: 'rgba(255, 255, 255, 0.95)',
@@ -191,19 +170,46 @@ export function HomePageGraphQL() {
       }}>
         <Container size="xl" py="md">
           <Group justify="space-between" align="center">
-            <Group align="center">
-              <Title order={1} size="h2" style={{ color: '#2c3e50' }}>
+            <Group align="center" gap="xl">
+              <Title 
+                order={1} 
+                size="h2" 
+                style={{ color: '#2c3e50', cursor: 'pointer' }}
+                onClick={() => navigate('/')}
+              >
                 🎬 Movie
               </Title>
+              
+              {user && (
+                <Group gap="xs">
+                  <Button 
+                    variant="light" 
+                    size="md"
+                    onClick={() => navigate('/')}
+                    style={{ fontWeight: 500 }}
+                  >
+                    Home
+                  </Button>
+                  <Button 
+                    variant="subtle" 
+                    size="md"
+                    leftSection={<IconUser size={18} />}
+                    onClick={() => navigate('/profile')}
+                    style={{ fontWeight: 500 }}
+                  >
+                    Profile
+                  </Button>
+                </Group>
+              )}
             </Group>
             
             <Group>
               {user ? (
-                <Group>
-                  <Text size="sm" fw={500}>
-                    Welcome, {user.name}!
+                <Group gap="sm">
+                  <Text size="sm" fw={500} c="dimmed">
+                    {user.name}
                   </Text>
-                  <Button variant="light" color="red" onClick={logout}>
+                  <Button variant="light" color="red" size="sm" onClick={logout}>
                     Logout
                   </Button>
                 </Group>
@@ -379,7 +385,7 @@ export function HomePageGraphQL() {
               verticalSpacing="lg"
             >
               {(showFavorites ? filteredFavoriteMovies : displayMovies).map((movie) => {
-                const isFavorite = movie.id && favoriteIds.includes(movie.id);
+                const isFavorite = movie.imdbID && isFavorited(movie.imdbID);
                 return (
                   <div key={movie.id || movie.imdbID || `movie-${Math.random()}`} style={{ position: 'relative' }}>
                     <MovieCard
@@ -391,14 +397,14 @@ export function HomePageGraphQL() {
                         setAuthModalOpened(true);
                       }}
                     />
-                    {/* Favorite Icon: Only show if user is logged in and movie has id */}
-                    {user && movie.id && (
+                    {/* Favorite Icon: Only show if user is logged in and movie has imdbID */}
+                    {user && movie.imdbID && (
                       <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 10 }}>
                         <ActionIcon
                           variant={isFavorite ? 'filled' : 'filled'}
                           color={isFavorite ? 'green' : 'blue'}
                           size="lg"
-                          onClick={() => movie.id && handleToggleFavorite(movie.id)}
+                          onClick={() => movie.imdbID && toggleFavorite(movie.imdbID)}
                           aria-label={isFavorite ? 'Remove from favorites' : 'Save as favorite'}
                         >
                           {isFavorite ? <IconTrash size={22} /> : <IconArchive size={22} />}
@@ -472,7 +478,7 @@ export function HomePageGraphQL() {
 
       {/* Footer */}
       <div style={{
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
         color: 'white',
         padding: '3rem 0',
         marginTop: '3rem'

@@ -96,7 +96,7 @@ export function MovieCard({ movie, onMovieClick, onFavoriteClick, showAuthModal 
         if (response.movie_favorite_count !== undefined) {
           setFavoriteCount(response.movie_favorite_count);
         }
-        onFavoriteClick?.(String(movieId));
+        onFavoriteClick?.(movie.imdbID || String(movieId));
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);

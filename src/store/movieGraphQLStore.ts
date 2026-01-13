@@ -41,7 +41,8 @@ interface MovieGraphQLStore {
   fetchMovies: (page?: number) => Promise<void>;
   searchMovies: (query: string, page?: number) => Promise<void>;
   fetchMovieById: (id: string) => Promise<void>;
-  toggleFavorite: (movieId: number) => void;
+  toggleFavorite: (imdbID: string) => void;
+  isFavorited: (imdbID: string) => boolean;
   loadFavoritesFromStorage: () => void;
   clearSearch: () => void;
   resetFilters: () => void;
@@ -236,7 +237,8 @@ export const useMovieGraphQLStore = create<MovieGraphQLStore>((set, get) => ({
   },
 
   // Toggle favorite status (still using localStorage for now)
-  toggleFavorite: (movieId: number) => {
+  toggleFavorite: (imdbID: string) => {
+    const movieId = parseInt(imdbID.replace('tt', ''), 10);
     const { favoriteIds } = get();
     const newFavoriteIds = favoriteIds.includes(movieId)
       ? favoriteIds.filter(id => id !== movieId)
@@ -244,6 +246,12 @@ export const useMovieGraphQLStore = create<MovieGraphQLStore>((set, get) => ({
 
     set({ favoriteIds: newFavoriteIds });
     localStorageUtils.setFavoriteIds(newFavoriteIds);
+  },
+
+  // Check if movie is favorited
+  isFavorited: (imdbID: string) => {
+    const movieId = parseInt(imdbID.replace('tt', ''), 10);
+    return get().favoriteIds.includes(movieId);
   },
 
   // Load favorites from localStorage
